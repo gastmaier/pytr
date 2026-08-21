@@ -658,11 +658,31 @@ class TradeRepublicApi:
         finally:
             await self.unsubscribe(subscription_id)
 
+    async def request(self, subscription, timeout=5.0):
+        """Subscribe and return the first response before unsubscribing."""
+        return await self._receive_one(subscription, timeout)
+
     def run_blocking(self, fut, timeout=5.0):
         return asyncio.run(self._receive_one(fut, timeout=timeout))
 
     async def portfolio(self):
         return await self.subscribe({"type": "portfolio"})
+
+    async def account_pairs(self):
+        return await self.subscribe({"type": "accountPairs"})
+
+    async def aggregate_history_light(self, isin, timeframe, resolution, exchange="LSX"):
+        return await self.subscribe(
+            {
+                "type": "aggregateHistoryLight",
+                "id": f"{isin}.{exchange}",
+                "range": timeframe,
+                "resolution": resolution,
+            }
+        )
+
+    async def stock_detail_kpis(self, isin):
+        return await self.subscribe({"type": "stockDetailKpis", "id": isin})
 
     async def portfolio_status(self):
         return await self.subscribe({"type": "portfolioStatus"})
