@@ -1,5 +1,6 @@
 """Pin the web login endpoints, their required headers and the login process state machine."""
 
+import asyncio
 import base64
 import json as jsonlib
 import re
@@ -42,8 +43,8 @@ class _Session:
         self.cookies = None
         self.headers = dict(TradeRepublicApi._default_headers)
 
-    def _record(self, method: str, url: str, json: Any = None, headers: Any = None) -> _Response:
-        self.calls.append({"method": method, "url": url, "json": json, "headers": headers or {}})
+    def _record(self, method: str, url: str, json: Any = None, headers: Any = None, params: Any = None) -> _Response:
+        self.calls.append({"method": method, "url": url, "json": json, "headers": headers or {}, "params": params})
         reply = self._replies.pop(0) if self._replies else {}
         status, payload = reply if isinstance(reply, tuple) else (200, reply)
         return _Response(url, payload, status)
@@ -54,8 +55,8 @@ class _Session:
     def get(self, url, headers=None):
         return self._record("GET", url, None, headers)
 
-    def request(self, method, url, data=None):
-        return self._record(method, url, None, None)
+    def request(self, method, url, data=None, headers=None, params=None, json=None):
+        return self._record(method, url, json if json is not None else data, headers, params)
 
 
 def _api(replies):
@@ -259,6 +260,39 @@ def test_app_version_and_platform_come_from_the_web_frontend():
     # A build version of the frontend, not a pytr version.
     assert re.fullmatch(r"\d+\.\d+\.\d+", headers["X-TR-App-Version"])
     assert headers["X-Tr-Platform"] == "web-pro"
+
+
+# --- screener API --------------------------------------------------------------------
+
+
+def test_screeners_lists_the_authenticated_users_screeners():
+    tr = _api([[{"id": "default", "isDefault": True}]])
+
+    assert asyncio.run(tr.screeners()) == [{"id": "default", "isDefault": True}]
+
+    call = tr._websession.calls[0]
+    assert call["method"] == "GET"
+    assert call["url"] == "https://api.traderepublic.com/api-gateway/screeners/api/v2/screeners"
+    for header in REQUIRED_HEADERS:
+        assert call["headers"].get(header), f"{header} missing"
+
+
+def test_screener_items_uses_the_selected_screener_and_query_parameters():
+    tr = _api([{"items": []}])
+
+    assert asyncio.run(tr.screener_items("default", ["isin", "core.shortName"], page_size=10, sort_by="fundamental.marketCap")) == {"items": []}
+
+    call = tr._websession.calls[0]
+    assert call["method"] == "POST"
+    assert call["url"] == "https://api.traderepublic.com/api-gateway/screeners/api/v2/screeners/default/items/query"
+    assert call["json"] == []
+    assert call["params"] == [
+        ("pageSize", 10),
+        ("sortOrder", "desc"),
+        ("sortBy", "fundamental.marketCap"),
+        ("columns", "isin"),
+        ("columns", "core.shortName"),
+    ]
 
 
 # --- endpoints that must NOT move ----------------------------------------------------

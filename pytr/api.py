@@ -665,6 +665,35 @@ class TradeRepublicApi:
     def run_blocking(self, fut, timeout=5.0):
         return asyncio.run(self._receive_one(fut, timeout=timeout))
 
+    def _screener_request(self, method, path, *, params=None, payload=None):
+        response = self._websession.request(
+            method,
+            f"{self._host}/api-gateway/screeners/api/v2/screeners{path}",
+            headers=self._login_headers(),
+            params=params,
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def screeners(self):
+        """Return screeners available to the authenticated user."""
+        return await asyncio.to_thread(self._screener_request, "GET", "")
+
+    async def screener_items(self, screener_id, columns, *, page_size=100, sort_by=None, sort_order="desc", filters=None):
+        """Return items from an available screener."""
+        params = [("pageSize", page_size), ("sortOrder", sort_order)]
+        if sort_by:
+            params.append(("sortBy", sort_by))
+        params.extend(("columns", column) for column in columns)
+        return await asyncio.to_thread(
+            self._screener_request,
+            "POST",
+            f"/{screener_id}/items/query",
+            params=params,
+            payload=[] if filters is None else filters,
+        )
+
     async def portfolio(self):
         return await self.subscribe({"type": "portfolio"})
 
